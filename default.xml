@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <remote name="courtbot-vt" fetch="https://github.com/codeforbtv/" />
+    <remote name="courtbot-vt-test" fetch="https://github.com/NathanWEdwards"/>
+
+    <project name="courtbot-vt-test" path="courtbot-vt-project" remote="courtbot-vt-test" revision="test" />
+    <project name="courtbot-vt" path="courtbot-vt-project/courtbot-vt" remote="courtbot-vt-test" revision="repo"/>
+    <project name="courtbot-vt-frontend" path="courtbot-vt-project/courtbot-vt-frontend" remote="courtbot-vt-test" revision="repo" />
+
+</manifest>

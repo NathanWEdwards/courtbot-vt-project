@@ -1,0 +1,73 @@
+version: 2.1
+orbs:
+  codecov: codecov/codecov@3
+jobs:
+  build:
+    docker:
+      - image: cimg/python:3.9
+      - image: circleci/mongo:focal
+      - image: nwedwards/sftp:alpine3.15
+    working_directory: /home/circleci/project/courtbot-vt-project/
+    steps:
+      - checkout
+      - run: mkdir /home/circleci/.bin
+      - run: echo 'export PATH=/home/circleci/.bin:$PATH' >> $BASH_ENV
+      - run: wget --https-only --secure-protocol=TLSv1_2 https://nodejs.org/dist/v19.2.0/node-v19.2.0-linux-x64.tar.xz -O /home/circleci/node.tar.xz
+      - run: tar xf /home/circleci/node.tar.xz -C /home/circleci/
+      - run: ln -s /home/circleci/node-v19.2.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js /home/circleci/.bin/npm && ln -s /home/circleci/node-v19.2.0-linux-x64/bin/node /home/circleci/.bin/node
+      - run: wget --https-only --secure-protocol=TLSv1_2 https://storage.googleapis.com/git-repo-downloads/repo -O /home/circleci/.bin/repo
+      - run: chmod a+rx /home/circleci/.bin/repo
+      - run: git config --global color.ui false && git config --global user.name NathanWEdwards && git config --global user.email Nathan.W.Edwards@Outlook.com && repo init -u file:///home/circleci/project/courtbot-vt-project -b test -m default.xml
+      - run: repo sync
+      - run: mkdir -p /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt-frontend/node_modules && npm install --prefix /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt-frontend
+      - run: npm install --prefix /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt-frontend --save-dev async-mutex jest node-mocks-http typescript ts-jest @types/jest
+      - run: npm audit fix --prefix /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt-frontend
+      - run: python -m pip install -r /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt/requirements.txt
+      - run: cd /home/circleci/project/courtbot-vt-project/courtbot-vt-project && python -m pip install -r /home/circleci/project/courtbot-vt-project/courtbot-vt-project/requirements.txt
+      - run: |
+            python - \<< EOF
+            from pymongo import MongoClient
+
+            from courtbot.model.events import docket_id_field_value
+            from courtbot.model.events import event_document
+
+            docket_id_count = 100
+
+            client = MongoClient("mongodb://localhost:27017")
+            db = client["courtbot"]
+            db.command("createUser",
+                        "user",
+                        pwd="password",
+                        roles=[
+                        {
+                            "role": "readWrite",
+                            "db": "courtbot"
+                        },
+                        {
+                            "role": "dbAdmin",
+                            "db": "courtbot"
+                        }
+                    ]
+            )
+            events_collection = db.events
+            events = []
+            attorneys="/home/circleci/project/courtbot-vt-project/courtbot-vt-project/resources/json/attorneys.json"
+            cases="/home/circleci/project/courtbot-vt-project/courtbot-vt-project/resources/json/cases.json"
+            court_divisions="/home/circleci/project/courtbot-vt-project/courtbot-vt-project/resources/json/court_divisions.json"
+            judges="/home/circleci/project/courtbot-vt-project/courtbot-vt-project/resources/json/judges.json"
+            litigants="/home/circleci/project/courtbot-vt-project/courtbot-vt-project/resources/json/litigants.json"
+            docket_ids = [docket_id_field_value() for _ in range(docket_id_count)]
+            for docket_id in docket_ids:
+                event = event_document(attorneys, cases, court_divisions, judges, litigants, [docket_id])
+                events.append(event.to_mongo())
+            events_collection.insert_many(events)
+            EOF
+      - run: python -m pytest --cov /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt
+      - run: cd /home/circleci/project/courtbot-vt-project/courtbot-vt-project/courtbot-vt-frontend/ && node ./node_modules/jest/bin/jest.js -- --config=./jest.config.js ./
+      - codecov/upload
+
+workflow:
+  version: 2.1
+  build-test:
+    jobs:
+      - build
